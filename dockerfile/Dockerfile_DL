@@ -1,0 +1,38 @@
+FROM nvidia/cuda:12.3.2-devel-ubuntu22.04
+LABEL maintainer="sienna.shhan@snu.ac.kr"
+
+# 공용 Docker-hub 설정까지 보류
+# Dockerfile 빌드 시점에 입력 받을 도커허브 사용자명을 위한 ARG 설정
+# ARG DOCKERHUB_USER
+# 설정된 도커허브 사용자명을 확인하기 위해 환경변수로 변환 (예시 용도)
+# ENV DOCKERHUB_USER_ENV=$DOCKERHUB_USER
+
+# root User로 설정
+USER root
+
+# Python, Git, 기본 유틸리티, 필요 라이브러리를 단일 RUN 레이어로 설치
+# apt 캐시 정리
+# 환경 변수 설정
+
+RUN apt update && apt-get update
+RUN apt-get install -y python3 python3-pip gcc gdal-bin libgdal-dev build-essential wget git
+RUN echo "export CPLUS_INCLUDE_PATH=/usr/include/gdal" >> ~/.bashrc && \
+    echo "export C_INCLUDE_PATH=/usr/include/gdal" >> ~/.bashrc && \
+    rm -rf /var/lib/apt/lists/*
+
+
+# install miniconda
+ENV CONDA_DIR /opt/conda
+RUN wget --quiet https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda.sh
+
+# put conda in path so we can use conda activate
+ENV PATH=$CONDA_DIR/bin:$PATH
+RUN export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$CONDA_PREFIX/lib/
+
+# upgrade pip and install python libraries
+RUN pip3 install --upgrade pip
+RUN pip3 install tensorflow tensorflow_hub tensorflow_datasets
+RUN pip3 install torch torchvision torchaudio -f https://download.pytorch.org/whl/torch_stable.html
+RUN pip3 install GDAL==$(gdal-config --version) --global-option=build_ext --global-option="-I/usr/include/gdal"
+RUN pip3 install numpy matplotlib rasterio shapely scikit-learn scikit-image opencv-python pandas numpy geopandas
+RUN pip3 install scipy basemap pyFFTW boto3 seaborn h5py dask xarray pytest

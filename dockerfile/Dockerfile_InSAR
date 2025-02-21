@@ -1,0 +1,77 @@
+FROM python:3.9.19-alpine3.19
+LABEL org.label-schema.name="python3.9.19-alpine3.19"
+LABEL maintainer="billyoon@snu.ac.kr"
+
+# root User로 설정
+USER root
+
+# 필요한 패키지 설치
+# libgdal 버전 확인 및 업데이트, isce-2 위해 scons 설치
+# scipy Fortran, OpenBLAS, Linux-headers 코드 설치 필요 (alpine-linux 경우)
+# pygrib, eccodes, eccodes-dev
+RUN apk add --update --no-cache g++ \ 
+    gcc \
+    libxml2-dev \
+    libxslt-dev \
+    python3-dev \
+    perl \
+    fftw-dev \
+    curl \
+    gdal \
+    gdal-dev \
+    scons \
+    linux-headers \
+    hdf5 \
+    hdf5-dev \
+    gfortran \
+    proj \
+    proj-dev \
+    proj-util \
+    cmake \
+    make \
+    openblas-dev \
+    musl-dev \
+    geos-dev \
+    netcdf-dev \
+    libaec-dev \
+    lapack\
+    lapack-dev \
+    libgcc \
+    libstdc++ \
+    libgfortran \
+    blas \
+    blas-dev \
+    python3-dev
+
+# Eccodes 소스 다운로드 및 빌드 (2.25.0 max, confluence.ecmwf에서는 2.90까지 사용 가능)
+# ECMWF 소스코드: https://confluence.ecmwf.int/display/ECC
+RUN wget -O eccodes-2.19.0-Source.tar.gz "https://confluence.ecmwf.int/download/attachments/45757960/eccodes-2.19.0-Source.tar.gz?api=v2" && \
+    tar -xzvf eccodes-2.19.0-Source.tar.gz && \
+    cd eccodes-2.19.0-Source && \
+    mkdir build && cd build && \
+    cmake .. -DCMAKE_INSTALL_PREFIX=/usr && \
+    make && make install
+
+# 환경 변수 설정
+ENV PROJ_LIB=/usr/share/proj \
+    C_INCLUDE_PATH=/usr/include:${C_INCLUDE_PATH} \
+    BLAS_LIB_DIR=/usr/lib \
+    LAPACK_LIB_DIR=/usr/lib
+
+# Python GDAL 및 기타 필수 패키지 설치
+RUN pip install --upgrade pip && \
+    pip install pygrib GDAL==3.8.4 --no-cache-dir cvxopt \
+    mintpy cython numpy scipy pandas matplotlib geopandas fiona opencv-python && \
+    rm -rf /root/.cache/pip
+
+# ISCE2 소스 코드 다운로드 및 설치
+WORKDIR /opt
+RUN curl -L https://github.com/isce-framework/isce2/archive/refs/heads/main.zip -o isce2.zip && \
+    unzip isce2.zip && \
+    mv isce2-main isce2 && \
+    rm isce2.zip
+
+WORKDIR /opt/isce2
+RUN scons install && \
+    rm -f config.log .sconfig.dblite && \
+    rm -rf .sconf_temp
