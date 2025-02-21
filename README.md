@@ -1,9 +1,10 @@
 # 프로젝트 구조 및 개발 가이드
 ## 목차
-1. [algorithm/ 디렉토리 변경](#1-algorithm-디렉토리-변경)
+1. [algorithm/ 폴더](#1-algorithm-폴더)
    - [1.1 디렉토리 구조](#11-디렉토리-구조)
    - [1.2 인자 변경](#12-인자-변경)
    - [1.3 DB 서비스 함수 import 및 호출](#13-db-서비스-함수-import-및-호출)
+   - [1.4 메인 함수 구조](#14-메인-함수-구조)
 2. [api/routers/ 변경](#2-apirouters-변경)
    - [2.1 인자 변경](#21-인자-변경)
    - [2.2 함수 호출](#22-함수-호출)
@@ -16,7 +17,7 @@
    - [5.1 인자 전달](#51-인자-전달)
 
 ---
-## 1. `algorithm/` 디렉토리 변경
+## 1. `algorithm/` 폴더
 
 ### 1.1 디렉토리 구조
 ```
@@ -52,6 +53,43 @@ def algorithm(db: Session, args: type):
 
 ### 1.3 DB 서비스 함수 import 및 호출
 - DB 관련 작업이 필요한 경우, 관련 서비스를 import 후 호출.
+```python
+from app.config.settings import settings
+
+def algorithm(db: Session, args: type):
+    input_dir = settings.SAMPLE_INPUT_PATH  # 입력 디렉토리
+    output_dir = settings.SAMPLE_OUTPUT_PATH  # 출력 디렉토리
+    meta_file = settings.SAMPLE_META_FILE  # 메타 파일 경로
+```
+
+### 1.4 메인 함수 구조 
+- **주요 함수: 기존 코드**
+- **process(): 주요 함수 실행 코드**; 함수 호출시 진입점 주요 함수를 일련의 순서 하에 실행
+     - db: Session, satellite_image_id: str 등을 입력으로 받음.
+     - ```python
+         def process(db: Session, parameter: str):
+             
+             start_time = time.time()
+         
+             # 입출력 경로 지정 
+             input_dir = settings.SAMPLE_INPUT_PATH
+             output_tif_file = settings.SAMPLE_OUTPUT_PATH
+             input_meta_file = settings.SAMPLE_META_FILE
+             
+             args = Cfg.args
+         
+             # 서비스 함수 호출: DB 데이터 확보 
+         
+             # 주요 함수 실행 
+             results = algorithm(input_dir, output_tif_file, input_meta_file, args)
+             
+             # 서비스 함수 호출: 산출 결과 DB에 업데이트 
+             # 예) bulk_upsert_data_hist(db, results)
+             
+             # 실행 시간 계산
+             processed_time = time.time() - start_time
+             logging.info(f"Processed SAR image classification in {processed_time:.2f} seconds")
+         ```
 
 ---
 
