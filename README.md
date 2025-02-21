@@ -58,6 +58,7 @@ def algorithm(db: Session, args: type):
 - **주요 함수: 기존 코드**
 - **process(): 주요 함수 실행 코드**; 함수 호출시 진입점 주요 함수를 일련의 순서 하에 실행
      - db: Session, satellite_image_id: str 등을 입력으로 받음.
+     - 주요 함수를 실행하기 위한 입출력 및 실행 순서 처리 
      - ```python
          def process(db: Session, parameter: str):
              
