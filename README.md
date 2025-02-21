@@ -53,14 +53,6 @@ def algorithm(db: Session, args: type):
 
 ### 1.3 DB 서비스 함수 import 및 호출
 - DB 관련 작업이 필요한 경우, 관련 서비스를 import 후 호출.
-```python
-from app.config.settings import settings
-
-def algorithm(db: Session, args: type):
-    input_dir = settings.SAMPLE_INPUT_PATH  # 입력 디렉토리
-    output_dir = settings.SAMPLE_OUTPUT_PATH  # 출력 디렉토리
-    meta_file = settings.SAMPLE_META_FILE  # 메타 파일 경로
-```
 
 ### 1.4 메인 함수 구조 
 - **주요 함수: 기존 코드**
