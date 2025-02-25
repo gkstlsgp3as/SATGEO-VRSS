@@ -87,7 +87,7 @@ def geotiff_read_ref(input_grd_file: str) -> Tuple[Any, int, int]:
     """
     Read geo-reference information from a TIFF file.
     """
-    import gdal
+    from osgeo import gdal
     import numpy as np
 
     gdal.AllRegister()
@@ -490,11 +490,11 @@ def sar_azimuth_offset_corr(df: pd.DataFrame, input_grd_file: str, input_meta_fi
         df.at[index, 'Lon'] += az_off_lon if view_left_right > 0 else -az_off_lon
 
     print('SAR-AIS Azimuth Offset Correction Finished in:', time.time() - start_time, 'seconds')
-    df.to_csv('AISmatchedwithSAR.csv', index=True)
+    df.to_csv('AISmatchedwithSAR.csv', index=False)
     return df
 
 
-def sar_ais_iden_eval(sar_vessels: str, preproc_ais: pd.DataFrame, output_vessle_iden_file: str, output_vessle_uniden_file: str, iden_distance: float = 200) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def sar_ais_iden_eval(sar_vessels: str, preproc_ais: pd.DataFrame, output_vessel_iden_file: str, output_vessel_uniden_file: str, iden_distance: float = 200) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Vessel identification by distance between SAR and AIS data.
     """
@@ -544,7 +544,7 @@ def sar_ais_iden_eval(sar_vessels: str, preproc_ais: pd.DataFrame, output_vessle
 
         if sar_iden_num[num, 0] > -1:
             idx = int(sar_iden_num[num, 0])
-            iden_vessels = iden_vessels.append({
+            new_row = pd.DataFrame({
                 'X': sar_ship_x[num],
                 'Y': sar_ship_y[num],
                 'W': sar_ship_w[num],
@@ -560,21 +560,24 @@ def sar_ais_iden_eval(sar_vessels: str, preproc_ais: pd.DataFrame, output_vessle
                 'DimB': preproc_ais['DimB'][idx],
                 'DimC': preproc_ais['DimC'][idx],
                 'DimD': preproc_ais['DimD'][idx]
-            }, ignore_index=True)
+            }, index=[0])
+            iden_vessels = pd.concat([iden_vessels, new_row], ignore_index=True)
+            
         else:
-            uniden_vessels = uniden_vessels.append({
+            new_row = pd.DataFrame({
                 'X': sar_ship_x[num],
                 'Y': sar_ship_y[num],
                 'W': sar_ship_w[num],
                 'H': sar_ship_h[num],
                 'Lon': sar_ship_lon[num],
                 'Lat': sar_ship_lat[num]
-            }, ignore_index=True)
+                }, index=[0])
+            uniden_vessels = pd.concat([uniden_vessels, new_row], ignore_index=True)
 
     print('SAR-AIS Identification Finished in:', time.time() - start_time, 'seconds')
 
-    iden_vessels.to_csv(output_vessle_iden_file, index=True)
-    uniden_vessels.to_csv(output_vessle_uniden_file, index=True)
+    iden_vessels.to_csv(output_vessel_iden_file, index=False)
+    uniden_vessels.to_csv(output_vessel_uniden_file, index=False)
 
     return iden_vessels, uniden_vessels
 
@@ -588,25 +591,25 @@ def get_args():
     parser.add_argument(
         '--input_grd_file', 
         type=str, 
-        default='../data/input/S1A_IW_GRDH_1SDV_20240829T092329_20240829T092358_055426_06C2AF_BF0D.tif',
+        default='../data/input/S1A_IW_GRDH_1SDV_20240224T093202_20240224T093227_052699_066052_14E8.tif',
         help='SAR image file'
     )
     parser.add_argument(
         '--input_meta_file', 
         type=str, 
-        default='../data/input/s1a-iw-grd-vv-20240829t092329-20240829t092358-055426-06c2af-001.xml',
+        default='../data/input/s1a-iw-grd-vv-20240224t093202-20240224t093227-052699-066052-001.xml',
         help='SAR metadata file'
     )
     parser.add_argument(
         '--input_ais_file', 
         type=str, 
-        default='../data/input/TAIS_20240829.csv',
+        default='../data/input/SAIS01_20240224_091022__20240224_101022.csv',
         help='AIS data file'
     )
     parser.add_argument(
         '--input_vessel_detection_file', 
         type=str, 
-        default='../data/ShipDet_S1A_IW_GRDH_1SDV_20231209T092333_20231209T092402_051576_0639F8_652A.csv',
+        default='../data/input/S1A_IW_GRDH_1SDV_20240224T093202_20240224T093227_052699_066052_14E8.csv',
         help='Detected Vessel file'
     )
     parser.add_argument(
@@ -624,9 +627,8 @@ if __name__ == '__main__':
     
     args = get_args()
     
-    output_vessle_iden_file = args.output_dir + args.input_vessel_detection_file[:-3] + '_IdenVessel.csv'
-    output_vessle_uniden_file = args.output_dir + args.input_vessel_detection_file[:-3] + '_UnIdenVessel.csv'
-    
+    output_vessel_iden_file = args.output_dir + args.input_vessel_detection_file.split('/')[-1][:-4] + '_IdenVessel.csv'
+    output_vessel_uniden_file = args.output_dir + args.input_vessel_detection_file.split('/')[-1][:-4] + '_UnIdenVessel.csv'
     # input_grd_file = 'S1A_IW_GRDH_1SDV_20240829T092329_20240829T092358_055426_06C2AF_BF0D.tif'
     # input_meta_file = 's1a-iw-grd-vv-20240829t092329-20240829t092358-055426-06c2af-001.xml'
     # input_ais_file = 'TAIS_20240829.csv'
@@ -634,7 +636,7 @@ if __name__ == '__main__':
 
     ProcessedDATA1 = sar_ais_match_time_interp(args.input_ais_file, args.input_grd_file, args.input_meta_file)
     ProcessedDATA2 = sar_azimuth_offset_corr(ProcessedDATA1, args.input_grd_file, args.input_meta_file)
-    ProcessedDATA3, ProcessedDATA4 = sar_ais_iden_eval(args.input_vessel_detection_file, ProcessedDATA2, output_vessle_iden_file, output_vessle_uniden_file, idenDistance=200)
+    ProcessedDATA3, ProcessedDATA4 = sar_ais_iden_eval(args.input_vessel_detection_file, ProcessedDATA2, output_vessel_iden_file, output_vessel_uniden_file, Cfg.iden_distance)
 
     # Calculate and log the processing time
     processed_time = time.time() - start_time

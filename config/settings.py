@@ -30,20 +30,9 @@ class Settings(BaseSettings):
     W03_INPUT_PATH: str
     W03_OUTPUT_PATH: str
 
-    M01_INPUT_PATH: str
-    M01_OUTPUT_PATH: str
-
-    M14_INPUT_PATH: str
-    M14_OUTPUT_PATH: str
-
-    N04_INPUT_PATH: str
-    N04_OUTPUT_PATH: str
-    N04_META_FILE: str
-    N04_MARINE_ZONE_PATH: str
-    N04_AIS_PATH: str
-    N04_WHOLE_FACILITEIS_PATH: str
-    N04_CONFIRMED_FACILITIES_PATH: str
-    N04_VESSEL_DETECTION_PATH: str
+    S01_MODEL_PATH: str
+    S01_INPUT_PATH: str
+    S01_OUTPUT_PATH: str
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
