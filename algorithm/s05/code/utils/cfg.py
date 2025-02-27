@@ -22,13 +22,6 @@ _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 Cfg = EasyDict()
 
 Cfg.epsg = "4326"             # EPSG code for geospatial outputs
-Cfg.color_map = {            # Color mapping for visualizations
-        "Cargo": (255, 0, 0),    # Red
-        "Fishing": (0, 255, 0),  # Green
-        "Tanker": (0, 0, 255),   # Blue
-        "Sailing": (255, 255, 0),  # Yellow
-        "TugTow": (255, 0, 255)   # Magenta
-    }
 
-Cfg.classes = ['Cargo', 'Fishing', 'Sailing', 'Tanker', 'TugTow'] 
+Cfg.classes = ['Cargo', 'Fishing', 'Passenger', 'Tanker', 'TugTow', 'DiveVessel', 'Dredger', 'PortTender', 'Bulk', 'Container'] 
 Cfg.img_size = 224

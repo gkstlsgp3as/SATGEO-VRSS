@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 import time
 import argparse 
 import logging
+from VRSS.config.settings import settings
 
 def init_db(file_db,path_ref):
     """
@@ -37,8 +38,12 @@ def init_db(file_db,path_ref):
 
 def process(db: Session, correction_map_id: str):
   # - main function
-  init_db("db_bias.nc","tmpdata/ECMWF_forecast_ready/*.nc")
-  init_db("db_M2.nc",  "tmpdata/ECMWF_forecast_ready/*.nc")
+  
+  ## get the input nc files from db 
+  work_dir = settings.w06_WORK_DIR
+  
+  init_db(work_dir+"db_bias.nc","tmpdata/ECMWF_forecast_ready/*.nc")
+  init_db(work_dir+"db_M2.nc",  "tmpdata/ECMWF_forecast_ready/*.nc")
   print("Database initialized successfully.")
 
 

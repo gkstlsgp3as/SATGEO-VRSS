@@ -18,10 +18,14 @@ import os
 from pathlib import Path
 from typing import List, Dict, Any
 from PIL import Image
+import cv2
+import numpy as np
 
 from torch.utils.data import Dataset
 import torch
 from torchvision.transforms import Compose
+
+FUSAR_MEAN = 2.677
 
 def read_platform(meta_file: str) -> List[str]:
     """
@@ -49,9 +53,27 @@ class ShipClassificationDataset(Dataset):
         """
         self.classes = classes
         self.path = path
-        self.img_files = [im for im in os.listdir(self.path) if im.split('_')[0] not in ['Others', 'Passenger']]
-        print(self.img_files)
-        self.imgs = [Image.open(Path(self.path, im)) for im in self.img_files]
+        self.img_files = os.listdir(self.path); 
+        #self.img_files = [im for im in self.img_files if im.split('_')[0] in self.classes]
+        #print(self.img_files)
+        self.imgs = []
+        self.img_scales = []
+        for im in self.img_files:
+            img = cv2.imread(str(self.path)+'/'+im, cv2.IMREAD_UNCHANGED)
+            if img.max != 0:
+                img_norm = np.array(255 * ((img - img.min()) / (img.max() - img.min())), np.uint8)
+            t, t_otsu = cv2.threshold(img_norm, -1, 255,  cv2.THRESH_BINARY | cv2.THRESH_OTSU) 
+            thres_m = (t_otsu/255) * img_norm
+            self.img_scales.append(thres_m.mean())
+            self.imgs.append(img)
+        
+        DATA_MEAN = np.array(self.img_scales).mean() 
+        for i, img in enumerate(self.imgs):
+            img = img / (DATA_MEAN / FUSAR_MEAN)
+            
+            self.imgs[i] = Image.fromarray(img)
+            
+
         self.transform = transform
 
     def __len__(self) -> int:
@@ -75,5 +97,5 @@ class ShipClassificationDataset(Dataset):
         """
         x = self.transform(self.imgs[idx])
         y = self.img_files[idx].split('_')[0]
-        y = self.classes.index(y)
-        return x, y
+        
+        return x

@@ -25,11 +25,8 @@ Cfg.batch = 2 #2
 Cfg.subdivisions = 1 # mini-batch = batch / subdivisions - 1
 
 # 학습 이미지 크기
-Cfg.width = 608 #512 608
-Cfg.height = 608 #512 608
+Cfg.img_size = 640
 Cfg.channels = 1
-Cfg.momentum = 0.949
-Cfg.decay = 0.0005
 
 # Classification
 Cfg.angle = 0
@@ -38,12 +35,6 @@ Cfg.saturation = 1.5
 Cfg.exposure = 1.5
 Cfg.hue = .1
 
-Cfg.learning_rate = 0.001 #0.01 0.001
-Cfg.burn_in = 1000
-Cfg.max_batches = 72825
-Cfg.steps = [58260, 65542] # max_batches * 0.8, 0.9
-Cfg.policy = Cfg.steps
-# steps[0] = learning_rate * .1...
 Cfg.scales = .1, .1
 
 Cfg.cutmix = 0
@@ -53,8 +44,6 @@ Cfg.letter_box = 0
 Cfg.jitter = .2 # 학습 이미지 크기 및 ratio 변환
 Cfg.classes = 1
 Cfg.track = 0
-Cfg.w = Cfg.width
-Cfg.h = Cfg.height
 Cfg.flip = 1 # 좌우 반전
 Cfg.blur = 0
 Cfg.gaussian = 1

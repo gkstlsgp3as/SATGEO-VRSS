@@ -33,8 +33,9 @@ from utils.general import check_img_size, check_requirements, check_imshow, non_
     scale_coords, xyxy2xywh, strip_optimizer, set_logging, increment_path
 from utils.plots import plot_xywh_box
 from utils.torch_utils import select_device, time_synchronized
+
 from sqlalchemy.orm import Session
-from app.config.settings import settings
+
 import argparse
 import gc
 import csv
@@ -104,8 +105,8 @@ def run(
     model = DetectMultiBackend(model_weight_file, device=device, dnn=False, data=None, fp16=Cfg.half)
     stride, names, pt = model.stride, model.names, model.pt
     
-    img_size = check_img_size(img_size, s=stride)  # check image size
-
+    img_size = check_img_size(Cfg.img_size, s=stride)  # check image size
+    
     # Dataloader
     old_img_w = old_img_h = img_size
     old_img_b = 3
@@ -221,8 +222,7 @@ def run(
             
             # Write the header row if the file is empty
             if txtfile.tell() == 0:
-                csv_writer.writerow(['ImageName', 'Lon', 'Lat', 'Color', 'Size', 'X', 'Y', 'W', 'H'])
-            
+                csv_writer.writerow(['ImageName', 'X', 'Y', 'W', 'H', 'Lon', 'Lat'])
             # Write the data rows
             for annotation, b, s in zip(bboxes, labels, scores):
                 left, top, right, bottom = annotation
@@ -232,7 +232,7 @@ def run(
                 h = bottom - top
                 
                 # Write a single row to the CSV
-                csv_writer.writerow([image_name, cx, cy, '153097098', s, left, top, w, h])
+                csv_writer.writerow([image_name, left, top, w, h, cx, cy])
                 cv2.rectangle(rgb_band, (int(left), int(top)), (int(right), int(bottom)), colors[0],8)
                 
     elif Cfg.output_format == 2:
@@ -243,7 +243,7 @@ def run(
             
             # Write the header row if the file is empty
             if csvfile.tell() == 0:
-                csv_writer.writerow(['ImageName', 'Lon', 'Lat', 'Color', 'Size', 'X', 'Y', 'W', 'H'])
+                csv_writer.writerow(['ImageName', 'X', 'Y', 'W', 'H', 'Lon', 'Lat'])
             
             # Write the data rows
             for annotation, b, s in zip(bboxes, labels, scores):
@@ -254,7 +254,7 @@ def run(
                 h = bottom - top
                 
                 # Write a single row to the CSV
-                csv_writer.writerow([image_name, cx, cy, '153097098', s, left, top, w, h])
+                csv_writer.writerow([image_name, left, top, w, h, cx, cy])
                 cv2.rectangle(rgb_band, (int(left), int(top)), (int(right), int(bottom)), colors[0],8)
             
     # Save results (image with detections)
@@ -266,6 +266,19 @@ def run(
         print(f'{s}Done. ({(1E3 * (t2 - t1)):.1f}ms) Inference, ({(1E3 * (t3 - t2)):.1f}ms) NMS')
         print(f'Done. ({time.time() - t0:.3f}s)')
 
+
+def process(db: Session, satellite_sar_image_id: str):
+    """Executes YOLOv5 model inference with given options, checking requirements before running the model."""
+    #check_requirements(ROOT / "requirements.txt", exclude=("tensorboard", "thop"))
+
+    from app.config.settings import settings
+    
+    model_weight_file = settings.S01_MODEL_PATH
+    input_dir = settings.S01_INPUT_PATH
+    output_dir = settings.S01_OUTPUT_PATH
+    device = ""
+    
+    run(model_weight_file, input_dir, output_dir, device)
 
 
 def get_args():
@@ -287,7 +300,7 @@ def get_args():
     parser.add_argument(
         '-O', "--output_dir", 
         type=str, 
-        default="./output/", 
+        default="../data/output/", 
         help="Path to update a single detection csv/txt file"
     )
     
@@ -300,17 +313,6 @@ def get_args():
     args = parser.parse_args()
     print_args(vars(args))
     return args
-
-
-def process(db: Session, satellite_sar_image_id: str):
-    """Executes YOLOv5 model inference with given options, checking requirements before running the model."""
-    #check_requirements(ROOT / "requirements.txt", exclude=("tensorboard", "thop"))
-    model_weight_file = settings.S01_MODEL_PATH
-    input_dir = settings.S01_INPUT_PATH
-    output_dir = settings.S01_OUTPUT_PATH
-    device = ""
-    
-    run(model_weight_file, input_dir, output_dir, device)
 
 
 if __name__ == "__main__":

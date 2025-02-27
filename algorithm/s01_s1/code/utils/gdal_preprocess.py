@@ -45,27 +45,24 @@ def get_labelme_annotation():
         final_df = final_df.append(df, ignore_index=True)
         # print(final_df.shape)
 
-    final_df.to_csv('./rgb_train.csv', index=False)
-
 
 # 학습자료를 분할(SAR image와 TrainingDataset 전부)
-def division_testset(input_band=None, div_num=20):
+def division_testset(input_band=None, img_size=640):
     img_list, div_coord = [], []
 
     h, w = input_band.shape[:2]
-    div_width = int(w / div_num)
-    div_height = int(h / div_num)
-    hd = [x for x in range(0, h, div_height)]
-    wd = [x for x in range(0, w, div_width)]
     
-    hd[-1] += h - hd[-1]
-    wd[-1] += w - wd[-1]
+    hd = [x for x in range(0, h, img_size-60)]
+    wd = [x for x in range(0, w, img_size-60)]
+    
+    hd[-1] = h - img_size; wd[-1] = w - img_size
+    hd.sort(); wd.sort()
     
     for h_id, div_h in enumerate(hd[:-1]):
         for w_id, div_w in enumerate(wd[:-1]):
             # Div position
             x1, y1 = div_w, div_h
-            x2, y2 = wd[w_id+1], hd[h_id+1]
+            x2, y2 = div_w+img_size, div_h+img_size
             # Crop
             crop = input_band[y1:y2, x1:x2]
             img_list.append(crop)

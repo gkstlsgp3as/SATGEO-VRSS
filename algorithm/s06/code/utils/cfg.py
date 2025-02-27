@@ -9,6 +9,5 @@ _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 Cfg = EasyDict()
 
 # Input data paths
-Cfg.L1Dvesselname = 'W:/ship_ais/L1DVesselswithVelocity.json'  # Path to L1D vessel file
-Cfg.timeinterval = 10.0  # Time interval for prediction (minutes)
-Cfg.timeEnd = 60.0  # End of time for prediction (minutes)
+Cfg.time_interval = 10.0  # Time interval for prediction (minutes)
+Cfg.time_end = 60.0  # End of time for prediction (minutes)

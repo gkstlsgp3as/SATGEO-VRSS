@@ -16,7 +16,6 @@ import gc
 from scipy.constants import c, milli
 from skimage.feature import peak_local_max
 from skimage.transform import radon, iradon_sart
-from extract_parameter_ver4 import Umbra
 import os
 import glob
 
@@ -73,36 +72,37 @@ def shanon(arr): # this function for calculating entropy
 
 def convert_coordinates(label, img_w, img_h):
 
-    class_name, x_center, y_center, width, height= label
-    x_center, y_center, width, height = (
-        float(x_center) * img_w, 
-        float(y_center) * img_h, 
-        float(width) * img_w, 
-        float(height) * img_h
+    x, y, width, height= label
+    x, y, width, height = (
+        float(x), #* img_w, 
+        float(y), #* img_h, 
+        float(width), #* img_w, 
+        float(height) #* img_h
     )
-    x1 = x_center - (width / 2)
-    y1 = y_center - (height / 2)
-    x2 = x_center + (width / 2)
-    y2 = y_center + (height / 2)
+    x1 = x #x_center - (width / 2)
+    y1 = y #y_center - (height / 2)
+    x2 = x + width
+    y2 = y + height
 
-    return [int(x1), int(y1), int(x2), int(y2),class_name]
+    return [int(x1), int(y1), int(x2), int(y2)]
 
 def read_label(label_path, img_w, img_h):
     yolo_labels = []
-
-# Open the file and read its contents
+    
+    # Open the file and read its contents
     with open(label_path, 'r') as file:
+        next(file)  # Skip the first line
         for line in file:
             # Split the line by spaces (assuming it's space-separated)
-            parts = line.strip().split()
+            parts = line.strip().split(',')
             
             # Extract class name and coordinates
-            class_name = parts[0]
+            #class_name = parts[0]
             x_center = float(parts[1])
             y_center = float(parts[2])
             width = float(parts[3])
             height = float(parts[4])
-            label = convert_coordinates([class_name, x_center, y_center, width, height], img_w, img_h)
+            label = convert_coordinates([x_center, y_center, width, height], img_w, img_h)
             # Append the parsed data as a list
             yolo_labels.append(label)
     yolo_labels = np.array(yolo_labels)
@@ -137,7 +137,7 @@ def findCOGdifference(angles, threshold):
 
 class Velocticy_est_UMBRA():
     ## firstly, load aux files and SLC file for ready to making 
-    def __init__(self, file_path, start_Azimuthvel, end_Azimuthvel, spacing, bbox,lam=0.031): #file_path is file path of slc and bbox is path of bounding boxes
+    def __init__(self, file_path, start_Azimuthvel, end_Azimuthvel, spacing, input_bbox_file, lam=0.031): #file_path is file path of slc and bbox is path of bounding boxes
         self.SLC_data = make_complex(get_sicd_file(file_path))
         self.Aux = load_json(get_json_file(file_path)) #file_path.replace("_SICD_MM.nitf", "_MM_METADATA.json")) 
         self.lam = lam
@@ -154,7 +154,7 @@ class Velocticy_est_UMBRA():
                             np.shape(self.SLC_data)[1]),(self.SLC_data.shape[0],1))
         self.inc_angle = float(self.Aux['collects'][0]['angleIncidenceDegrees'])
         self.fc = self.c0 / self.lam
-        self.bbox_array = read_label(bbox, self.SLC_data.shape[1], self.SLC_data.shape[0]) # x1,y1,x2,y2,class_name
+        self.bbox_array = read_label(input_bbox_file, self.SLC_data.shape[1], self.SLC_data.shape[0]) # x1,y1,x2,y2
         self.Azimuthvel_array = np.arange(start_Azimuthvel, end_Azimuthvel, spacing)
 
 

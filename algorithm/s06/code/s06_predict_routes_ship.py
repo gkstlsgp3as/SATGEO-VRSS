@@ -4,61 +4,47 @@ import json
 import math
 import time
 from typing import Any, Dict, List, Tuple
-from cfg import Cfg
+from utils.cfg import Cfg
+import logging
+import os
 
 #input_grd_file: str = 'W:/ship_ais/L1DVesselswithVelocity.json'
 
 
-def coursePred(input_grd_file: str, time_interval: float = 10.0, time_end: float = 60.0) -> List[Dict[str, Any]]:
+def coursePred(input_vessel_detection_file: str, time_interval: float = 10.0, time_end: float = 60.0) -> List[Dict[str, Any]]:
     """
     Predict the future course of vessels based on their initial positions and velocities.
 
-    :param input_grd_file: Path to the JSON file containing L1D vessel data.
+    :param input_vessel_detection_file: Path to the JSON file containing L1D vessel data.
     :param time_interval: Time interval (in minutes) for each prediction step.
     :param time_end: End time (in minutes) for the prediction.
     :return: A list of dictionaries containing updated vessel data with predicted positions.
     """
-    startt: float = time.time()
-    L1Dvesseldata: List[Dict[str, Any]] = []
-
+    
     # Load json data: L1D vessel with velocity
-    with open(input_grd_file, 'r') as file:
-        for line in file:
-            try:
-                L1Dvesseldata.append(json.loads(line))
-            except json.JSONDecodeError as e:
-                print(f"Error decoding JSON: {e}")
+    L1Dvesseldata = pd.read_csv(input_vessel_detection_file)
+   
+    time_range = np.linspace(time_interval, time_end, int(time_end / time_interval))
 
-    L1DvesseldataExp = L1Dvesseldata.copy()
+    # 각 시간에 대한 열 이름을 생성하여 데이터프레임에 추가
+    for t in time_range:
+        L1Dvesseldata[f'PredLon_{int(t)}'] = np.nan
+        L1Dvesseldata[f'PredLat_{int(t)}'] = np.nan
 
-    # Define reference time and predicted course for each vessel
-    for num in range(len(L1Dvesseldata)):
-        L1Dvesseldatatemp = L1Dvesseldata[num]
+    # 선박 데이터 순회하면서 예측 위치 계산
+    for index, row in L1Dvesseldata.iterrows():
+        lon = row['Lon']
+        lat = row['Lat']
+        heading = row['COG']
+        velocity = row['SOG']
 
-        lat: float = L1Dvesseldatatemp['Lat']
-        lon: float = L1Dvesseldatatemp['Lon']
-        heading: float = L1Dvesseldatatemp['COG']
-        velocity: float = L1Dvesseldatatemp['SOG']
-
-        # Create a range of times (in minutes) for predictions
-        timeRange: np.ndarray = np.linspace(time_interval, time_end, round(time_end/time_interval))
-        NewLat: List[float] = []
-        NewLon: List[float] = []
-
-        for num1 in range(len(timeRange)):
-            new_lat, new_lon = predict_shipLocation(lat, lon, heading, velocity, timeRange[num1])
-            NewLat.append(new_lat)
-            NewLon.append(new_lon)
-
-        L1Dvesseldatatemp['PredLon'] = NewLon
-        L1Dvesseldatatemp['PredLat'] = NewLat
-        L1Dvesseldatatemp['PredTime'] = timeRange
-
-        L1DvesseldataExp[num] = L1Dvesseldatatemp
-
-    print(time.time() - startt, ' [s]')
-
-    return L1DvesseldataExp
+        # 각 시간에 대한 예측 위치 계산
+        for t in time_range:
+            new_lat, new_lon = predict_shipLocation(lat, lon, heading, velocity, t)
+            L1Dvesseldata.at[index, f'PredLon_{int(t)}'] = new_lon
+            L1Dvesseldata.at[index, f'PredLat_{int(t)}'] = new_lat
+            
+    return L1Dvesseldata
 
 
 def predict_shipLocation(lat: float, lon: float, heading: float, velocity: float, time_mins: float) -> Tuple[float, float]:
@@ -112,15 +98,31 @@ def get_args():
     
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '--input_grd_file', 
+        '--input_vessel_detection_file', 
         type=str,
-        help='Path to the L1D vessel file'
+        default='../data/input/2024-10-12-01-47-23_UMBRA-07_SICD_MM.txt',
+        help='Path to the L1D vessel detection file w/ COG and SOG'
+    )
+    parser.add_argument(
+        '--output_dir', 
+        type=str,
+        default='../data/output/',
+        help='Path to the output file'
     )
     args = parser.parse_args()
     return args
 
 
 if __name__ == '__main__':
-    args = get_args()
+    start_time = time.time()
 
-    L1DvesseldataExp = coursePred(args.input_grd_file, Cfg.time_interval, Cfg.time_end)
+    args = get_args()
+    print(args);print("start prediction vessel location!")
+
+    L1Dvesseldata = coursePred(args.input_vessel_detection_file, Cfg.time_interval, Cfg.time_end)
+    
+    img_name = args.input_vessel_detection_file.split('/')[-1]
+    L1Dvesseldata.to_csv(args.output_dir+img_name, index=False)
+
+    processed_time = time.time() - start_time
+    logging.info(f"{processed_time:.2f} seconds")

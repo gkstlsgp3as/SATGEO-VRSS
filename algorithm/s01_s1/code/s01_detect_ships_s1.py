@@ -20,7 +20,6 @@ from utils.cfg import Cfg
 from models.models import Yolov4
 import logging
 from sqlalchemy.orm import Session
-from app.config.settings import settings
 
 """hyper parameters"""
 use_cuda = True
@@ -46,7 +45,8 @@ def get_gdal_testset(imagefolder):
 
     return test_images
 
-def detect(model, imglist, div, input_size, score_thresh):
+
+def detect(model, imglist, div, img_size, score_thresh):
     total_preds, shore_bboxes, detect_times = [], [], []
     for i in imglist:
         final_bboxes = []
@@ -54,15 +54,15 @@ def detect(model, imglist, div, input_size, score_thresh):
         lines = line_detection(i)
 
         rgb_band = cv2.cvtColor(i, cv2.COLOR_BGR2RGB)
-        div_img_list, div_coord = division_testset(input_band=rgb_band, div_num=div)
-        line_div_list, _ = division_testset(input_band=lines, div_num=div)
+        div_img_list, div_coord = division_testset(input_band=rgb_band, img_size=img_size)
+        line_div_list, _ = division_testset(input_band=lines, img_size=img_size)
 
         for d_id, d_img in enumerate(div_img_list):
             if np.average(line_div_list[d_id]) == 1.:
                 continue
             div_x, div_y = div_coord[d_id][0], div_coord[d_id][1]
 
-            sized = cv2.resize(d_img, (input_size,input_size))
+            sized = cv2.resize(d_img, (img_size,img_size))
 
             # Gaussian Blur
             kernel = 3
@@ -99,16 +99,12 @@ def detect(model, imglist, div, input_size, score_thresh):
 
 
 # Inference 평가를 위한 list detection
-def detect_listInference(model, input_dir, output_dir, div, input_size, score_thresh, model_name=None, line_det=False, kernel=3, csv_path='./milestone/rgb_divInfer.csv',bandnumber=3):
+def detect_listInference(model, input_dir, output_dir, div, img_size, score_thresh, model_name=None, line_det=False, kernel=3, csv_path='./milestone/rgb_divInfer.csv',bandnumber=3):
     from utils.cfg import Cfg
     import pandas as pd
 
-    #bandnumber = Cfg.Satelliteband
     img_list = [x for x in os.listdir(input_dir) if x.endswith('tif')]
-    total_preds = []
-
-    result_df = pd.DataFrame(columns=['image', 'X', 'Y', 'W', 'H'])
-
+    
     for i in img_list:
         final_bboxes, shore_bboxes = [], []
         detect_times = []
@@ -133,9 +129,8 @@ def detect_listInference(model, input_dir, output_dir, div, input_size, score_th
         # BGR --> RGB
         rgb_band = cv2.cvtColor(rgb_band, cv2.COLOR_BGR2RGB)
 
-        # 테스트 이미지를 1/div_num 만큼 width, height를 분할하고, 크롭된 이미지와 위치좌표를 반환
-        div_img_list, div_coord = division_testset(input_band=rgb_band, div_num=div)
-        line_div_list, _ = division_testset(input_band=lines, div_num=div)
+        div_img_list, div_coord = division_testset(input_band=rgb_band, img_size=img_size)
+        line_div_list, _ = division_testset(input_band=lines, img_size=img_size)
 
         for d_id, d_img in enumerate(div_img_list):
             # 크롭 이미지에서 라인 검출결과가 전부 1일 경우 해당 이미지는 전부 육지에 해당하기때문에 추론하지 않음
@@ -145,7 +140,7 @@ def detect_listInference(model, input_dir, output_dir, div, input_size, score_th
             # 원본 이미지 좌표로 변환하기 위해 분활 좌표를 저장
             div_x, div_y = div_coord[d_id][0], div_coord[d_id][1]
             # 모델 입력 사이즈로 이미지 크기 변환
-            sized = cv2.resize(d_img, (input_size, input_size))
+            sized = cv2.resize(d_img, (img_size, img_size))
 
             # Gaussian Blur
             if kernel > 0:
@@ -187,14 +182,13 @@ def detect_listInference(model, input_dir, output_dir, div, input_size, score_th
                         shore_bboxes.append([x1, y1, x2, y2])
                 else:
                     final_bboxes.append([x1, y1, x2, y2])
-
-        total_preds.append(len(final_bboxes))
+                
 
         try:
             # Detected Vessel export to csv: Image-dependent output
             final_bboxes = np.array(final_bboxes)
-            image_df = pd.DataFrame(columns=['image', 'X', 'Y', 'W', 'H','Lon','Lat'])
-            image_df['image'] = [i for x in range(len(final_bboxes))]
+            image_df = pd.DataFrame(columns=['ImageName', 'X', 'Y', 'W', 'H','Lon','Lat'])
+            image_df['ImageName'] = [i[:-4] for x in range(len(final_bboxes))]
             image_df['X'] = final_bboxes[:, 0]
             image_df['Y'] = final_bboxes[:, 1]
             image_df['W'] = final_bboxes[:, 2] - final_bboxes[:, 0]
@@ -204,15 +198,13 @@ def detect_listInference(model, input_dir, output_dir, div, input_size, score_th
             image_df['Lat'] = cd * ((final_bboxes[:, 2] + final_bboxes[:, 0]) / 2) + ce * (
                     (final_bboxes[:, 3] + final_bboxes[:, 1]) / 2) + yoff
 
-            print('Vessels Detected in This Scene! Saved at '+output_dir+i[:-4]+'.csv')
-            image_df.to_csv(output_dir+i[:-4]+'.csv', index=False, encoding='utf-8')
+            print('Vessels Detected in This Scene! Saved at '+output_dir+i[:-4]+'.txt')
+            image_df.to_csv(output_dir+i[:-4]+'.txt', index=False, sep=',', encoding='utf-8')
 
         except:
             print('No Vessel Detected in This Scene!')
-            image_df = pd.DataFrame(columns=['image', 'X', 'Y', 'W', 'H', 'Lon', 'Lat'])
-            image_df.to_csv(output_dir+i, index=False, encoding='utf-8')
-            
-        return image_df
+            image_df = pd.DataFrame(columns=['ImageName', 'X', 'Y', 'W', 'H', 'Lon', 'Lat'])
+            image_df.to_csv(output_dir+i[:-4]+'.txt', index=False, sep=',', encoding='utf-8')
             
             
 # IoU calculation between 2 boxes
@@ -314,6 +306,8 @@ def geographicToIntrinsic(tif_ref, lat, lon):
 
 
 def process(db: Session, satellite_sar_image_id: str):
+    from app.config.settings import settings
+    
     input_dir = settings.S01_S1_INPUT_PATH
     output_dir = settings.S01_S1_OUTPUT_PATH
     model_weight_file = settings.S01_S1_MODEL_PATH
@@ -326,12 +320,12 @@ def process(db: Session, satellite_sar_image_id: str):
     model.load_state_dict(pretrained_dict)
 
     if use_cuda:
-        model.cuda()
+        model.cuda()  
 
-    detect_results = detect_listInference(model, input_dir,
+    detect_listInference(model, input_dir,
                 output_dir,
                 div=Cfg.division,
-                input_size=Cfg.inputsize,
+                img_size=Cfg.img_size,
                 score_thresh=Cfg.scorethresh,
                 model_name=weight_name,
                 line_det=False,
@@ -384,7 +378,7 @@ if __name__ == '__main__':
     detect_listInference(model, args.input_dir,
                 args.output_dir,
                 div=Cfg.division,
-                input_size=Cfg.inputsize,
+                img_size=Cfg.img_size,
                 score_thresh=Cfg.scorethresh,
                 model_name=weight_name,
                 line_det=False,

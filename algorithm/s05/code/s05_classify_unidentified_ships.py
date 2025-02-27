@@ -28,9 +28,9 @@ from models.models import select_model
 from sqlalchemy.orm import Session
 
 ## TODO: 관련 DB 모델 및 서비스 import 
-from app.config.settings import settings
-from app.service import sar_ship_unidentification_service
+
 from utils.cfg import Cfg
+import os
 
 
 def classify_unidentified_ships(chip_dir: str, meta_file: str, ) -> None:
@@ -62,20 +62,17 @@ def classify_unidentified_ships(chip_dir: str, meta_file: str, ) -> None:
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)
 
-    init_time = time.time()
-
     # Perform Classification
     predictions = []
     labels = []
 
-    for img, label in iter(dataset):
-        labels.append(label)
+    for img in iter(dataset):
         img = img.to(device).unsqueeze(0)
         y_pred, _ = model(img)
 
         _, top_pred = y_pred.topk(2, 1)
         predictions.append(top_pred[0][0].detach().cpu())
-        
+
     return predictions
 
 
@@ -96,6 +93,9 @@ def process(db: Session, satellite_sar_image_id: str):
     3. Classifies unidentified ships using a machine learning model.
     4. Updates the classification results back into the database.
     """
+    from app.config.settings import settings
+    from app.service import sar_ship_unidentification_service
+
     # Define directories and file paths based on settings
     chip_dir = settings.S02_CHIP_PATH
     meta_file = settings.S05_META_FILE
@@ -125,4 +125,50 @@ def process(db: Session, satellite_sar_image_id: str):
     # Calculate and log the processing time
     processed_time = time.time() - start_time
     logging.info(f"Processed SAR image classification in {processed_time:.2f} seconds")
+
+
+def get_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '-I', '--input_dir', 
+        type=str, 
+        default='../data/input/', 
+        help='directory to chip'
+    )
+    parser.add_argument(
+        '-O', '--output_dir', 
+        type=str, 
+        default="../data/output/", 
+        help='path to save outputs'
+    )
+    parser.add_argument(
+        '--input_meta_file', 
+        type=str, 
+        default='../data/input/metainfo.json', 
+        help='path to image metafile'
+    )
+
+    # Parse arguments
+    args = parser.parse_args()
     
+    return args
+
+
+if __name__ == '__main__':
+    
+    start_time = time.time()
+    
+    args = get_args()
+    
+    print(args);print("start estimating classes")
+
+    predictions = classify_unidentified_ships(args.input_dir+'chips/', args.input_meta_file)
+    
+    bbox_file = [f for f in os.listdir(args.input_dir) if f.endswith('txt')][0]
+            
+    #search detected_label
+    df = pd.read_csv(args.input_dir+bbox_file); df['Class'] = [Cfg.classes[p] for p in predictions]
+    df.to_csv(args.output_dir+bbox_file, index=False)
+    
+    processed_time = time.time() - start_time
+    logging.info(f"{processed_time:.2f} seconds")

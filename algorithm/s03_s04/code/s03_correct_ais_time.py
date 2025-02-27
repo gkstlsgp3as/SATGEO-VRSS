@@ -11,8 +11,6 @@ import numpy as np
 import os
 
 from sqlalchemy.orm import Session
-from app.config.settings import settings
-from app.service import ais_ship_data_hist_service
 from datetime import datetime
 
 import warnings
@@ -138,7 +136,7 @@ def read_ais(input_ais_file: str):
     ship_dim_c = df['DimC']
     ship_dim_d = df['DimD']
     ship_status = df['Status']
-    ship_destination = df['Destination']
+    ship_destination = df['ToPortof']
 
     ship_name = np.array(ship_name)
     ship_type = np.array(ship_type)
@@ -509,13 +507,13 @@ def sar_azimuth_offset_corr(df: pd.DataFrame, input_grd_file: str, input_meta_fi
     return df
 
 
-def sar_ais_iden_eval(sar_vessels: str, preproc_ais: pd.DataFrame, output_vessel_iden_file: str, output_vessel_uniden_file: str, iden_distance: float = 200) -> Tuple[pd.DataFrame, pd.DataFrame]:
+def sar_ais_iden_eval(grd_file: str, sar_vessels: str, preproc_ais: pd.DataFrame, output_vessel_iden_file: str, output_vessel_uniden_file: str, iden_distance: float = 200) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Vessel identification by distance between SAR and AIS data.
     """
     import time
     import numpy as np
-
+    
     try:
         sar_vessels_df = pd.read_csv(sar_vessels)
     except Exception as e:
@@ -534,12 +532,14 @@ def sar_ais_iden_eval(sar_vessels: str, preproc_ais: pd.DataFrame, output_vessel
     preproc_ais_lat = preproc_ais['Lat']
 
     sar_iden_num = (-1) * np.ones((len(sar_ship_lon), 2))
+    
+    img_name = grd_file.split('/')[-1][:-4]
 
     iden_vessels = pd.DataFrame(columns=[
-        'X', 'Y', 'W', 'H', 'Lon', 'Lat', 'MMSI', 'COG', 'SOG',
+        'ImageName', 'X', 'Y', 'W', 'H', 'Lon', 'Lat', 'MMSI', 'COG', 'SOG',
         'VesselName', 'VesselType', 'DimA', 'DimB', 'DimC', 'DimD', 'Destination', 'DetLon', 'DetLat'
     ])
-    uniden_vessels = pd.DataFrame(columns=['X', 'Y', 'W', 'H', 'Lon', 'Lat'])
+    uniden_vessels = pd.DataFrame(columns=['ImageName', 'X', 'Y', 'W', 'H', 'Lon', 'Lat'])
 
     from math import radians, sin, cos, atan2, sqrt
 
@@ -556,10 +556,11 @@ def sar_ais_iden_eval(sar_vessels: str, preproc_ais: pd.DataFrame, output_vessel
             elif sar_iden_num[num, 0] > -1 and sar_ais_dist_temp < iden_distance and sar_iden_num[num, 1] > sar_ais_dist_temp:
                 sar_iden_num[num, 0] = num0
                 sar_iden_num[num, 1] = sar_ais_dist_temp
-
+        
         if sar_iden_num[num, 0] > -1:
             idx = int(sar_iden_num[num, 0])
             new_row = pd.DataFrame({
+                'ImageName': img_name,
                 'X': sar_ship_x[num],
                 'Y': sar_ship_y[num],
                 'W': sar_ship_w[num],
@@ -583,6 +584,7 @@ def sar_ais_iden_eval(sar_vessels: str, preproc_ais: pd.DataFrame, output_vessel
             
         else:
             new_row = pd.DataFrame({
+                'ImageName': img_name,
                 'X': sar_ship_x[num],
                 'Y': sar_ship_y[num],
                 'W': sar_ship_w[num],
@@ -594,8 +596,8 @@ def sar_ais_iden_eval(sar_vessels: str, preproc_ais: pd.DataFrame, output_vessel
 
     print('SAR-AIS Identification Finished in:', time.time() - start_time, 'seconds')
 
-    iden_vessels.to_csv(output_vessel_iden_file, index=False)
-    uniden_vessels.to_csv(output_vessel_uniden_file, index=False)
+    iden_vessels.to_csv(output_vessel_iden_file, index=False, sep=',', encoding='utf-8')
+    uniden_vessels.to_csv(output_vessel_uniden_file, index=False, sep=',', encoding='utf-8')
 
     return iden_vessels, uniden_vessels
 
@@ -617,7 +619,9 @@ def get_ais_data(
     lat_min: float,
     lat_max: float
 ) -> pd.DataFrame:
-    query = ais_ship_data_hist_service.get_ship_data_history(
+    from app.service.ais_ship_data_hist_service import get_ship_data_history
+    
+    query = get_ship_data_history(
         db,
         timestamp_start,
         timestamp_end,
@@ -686,11 +690,14 @@ def save_vessel_data(db:Session, satellite_sar_image_id:str, iden_vessels:pd.Dat
     
 
 def process(db:Session, satellite_sar_image_id: str): 
+    from app.config.settings import settings
+    from app.service import ais_ship_data_hist_service
+    
     input_grd_file = settings.S03_INPUT_GRD_FILE
     input_meta_file = settings.S03_INPUT_META_FILE
     output_dir = settings.S03_OUTPUT_PATH
     input_vessel_detection_file = settings.S01_OUTPUT_PATH
-    input_vessel_detection_file = os.listdir(input_vessel_detection_file)[0]
+    input_vessel_detection_file = [f for f in os.listdir(input_vessel_detection_file) if f.endswith('txt')]
     
     timestamp_start, timestamp_end, lon_min, lon_max, lat_min, lat_max = get_ais_query(input_meta_file)
     
@@ -704,12 +711,12 @@ def process(db:Session, satellite_sar_image_id: str):
         lat_max
     )
     
-    output_vessel_iden_file = output_dir + input_vessel_detection_file.split('/')[-1][:-4] + '_IdenVessel.csv'
-    output_vessel_uniden_file = output_dir + input_vessel_detection_file.split('/')[-1][:-4] + '_UnIdenVessel.csv'
+    output_vessel_iden_file = output_dir + input_vessel_detection_file.split('/')[-1][:-4] + '_IdenVessel.txt'
+    output_vessel_uniden_file = output_dir + input_vessel_detection_file.split('/')[-1][:-4] + '_UnIdenVessel.txt'
     
     ProcessedDATA1 = sar_ais_match_time_interp(input_ais_file, input_grd_file, input_meta_file, output_dir)
     ProcessedDATA2 = sar_azimuth_offset_corr(ProcessedDATA1, input_grd_file, input_meta_file, output_dir)
-    ProcessedDATA3, ProcessedDATA4 = sar_ais_iden_eval(input_vessel_detection_file, ProcessedDATA2, output_vessel_iden_file, output_vessel_uniden_file, Cfg.iden_distance)
+    ProcessedDATA3, ProcessedDATA4 = sar_ais_iden_eval(input_grd_file, input_vessel_detection_file, ProcessedDATA2, output_vessel_iden_file, output_vessel_uniden_file, Cfg.iden_distance)
 
     save_vessel_data(db, satellite_sar_image_id, ProcessedDATA3, ProcessedDATA4)
     
@@ -741,7 +748,7 @@ def get_args():
     parser.add_argument(
         '--input_vessel_detection_file', 
         type=str, 
-        default='../data/input/S1A_IW_GRDH_1SDV_20240224T093202_20240224T093227_052699_066052_14E8.csv',
+        default='../data/input/S1A_IW_GRDH_1SDV_20240224T093202_20240224T093227_052699_066052_14E8.txt',
         help='Detected Vessel file'
     )
     parser.add_argument(
@@ -761,14 +768,10 @@ if __name__ == '__main__':
     
     output_vessel_iden_file = args.output_dir + args.input_vessel_detection_file.split('/')[-1][:-4] + '_IdenVessel.csv'
     output_vessel_uniden_file = args.output_dir + args.input_vessel_detection_file.split('/')[-1][:-4] + '_UnIdenVessel.csv'
-    # input_grd_file = 'S1A_IW_GRDH_1SDV_20240829T092329_20240829T092358_055426_06C2AF_BF0D.tif'
-    # input_meta_file = 's1a-iw-grd-vv-20240829t092329-20240829t092358-055426-06c2af-001.xml'
-    # input_ais_file = 'TAIS_20240829.csv'
-    # input_vessel_detection_file = 'ShipDet_S1A_IW_GRDH_1SDV_20231209T092333_20231209T092402_051576_0639F8_652A.csv'
-
+    
     ProcessedDATA1 = sar_ais_match_time_interp(args.input_ais_file, args.input_grd_file, args.input_meta_file, args.output_dir)
     ProcessedDATA2 = sar_azimuth_offset_corr(ProcessedDATA1, args.input_grd_file, args.input_meta_file, args.output_dir)
-    ProcessedDATA3, ProcessedDATA4 = sar_ais_iden_eval(args.input_vessel_detection_file, ProcessedDATA2, output_vessel_iden_file, output_vessel_uniden_file, Cfg.iden_distance)
+    ProcessedDATA3, ProcessedDATA4 = sar_ais_iden_eval(args.input_grd_file, args.input_vessel_detection_file, ProcessedDATA2, output_vessel_iden_file, output_vessel_uniden_file, Cfg.iden_distance)
 
     # Calculate and log the processing time
     processed_time = time.time() - start_time
