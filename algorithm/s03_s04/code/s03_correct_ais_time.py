@@ -7,6 +7,13 @@ from typing import Any, Dict, List, Tuple, Optional
 from utils.cfg import Cfg
 import time
 import logging
+import numpy as np
+import os
+
+from sqlalchemy.orm import Session
+from app.config.settings import settings
+from app.service import ais_ship_data_hist_service
+from datetime import datetime
 
 import warnings
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -131,10 +138,12 @@ def read_ais(input_ais_file: str):
     ship_dim_c = df['DimC']
     ship_dim_d = df['DimD']
     ship_status = df['Status']
+    ship_destination = df['Destination']
 
     ship_name = np.array(ship_name)
     ship_type = np.array(ship_type)
     ship_status = np.array(ship_status)
+    ship_destination = np.array(ship_destination)
 
     ship_id = np.array(ship_id)
     ship_lon = np.array(ship_lon)
@@ -183,6 +192,7 @@ def read_ais(input_ais_file: str):
         ship_name,
         ship_type,
         ship_status,
+        ship_destination,
         csv_export
     )
 
@@ -248,7 +258,7 @@ def deg_to_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return distance
 
 
-def sar_ais_match_time_interp(input_ais_file: str, input_grd_file: str, input_meta_file: str) -> pd.DataFrame:
+def sar_ais_match_time_interp(input_ais_file: str, input_grd_file: str, input_meta_file: str, output_dir: str) -> pd.DataFrame:
     """
     Perform time interpolation for SAR-AIS matching.
     """
@@ -258,7 +268,7 @@ def sar_ais_match_time_interp(input_ais_file: str, input_grd_file: str, input_me
 
     start_time = time.time()
 
-    ship_id, ship_time_num, ship_lon, ship_lat, ship_sog, ship_cog, ship_name, ship_type, ship_status, csv_export = read_ais(input_ais_file)
+    ship_id, ship_time_num, ship_lon, ship_lat, ship_sog, ship_cog, ship_name, ship_type, ship_status, ship_destination, csv_export = read_ais(input_ais_file)
 
     unique_array, unique_loc = np.unique(csv_export[:, 0], return_index=True)
     csv_export = csv_export[unique_loc, :]
@@ -414,15 +424,18 @@ def sar_ais_match_time_interp(input_ais_file: str, input_grd_file: str, input_me
         det_loc = int(np.argwhere(csv_export[:, 0] == ship_id_temp))
         dim_output[:, num1] = csv_export[det_loc, 1:]
 
-    # Retrieve vessel name/type
+    # Retrieve vessel name/type/destination/detloc/detlat
     ship_name_exp: List[Any] = []
     ship_type_exp: List[Any] = []
+    ship_destination_exp: List[Any] = []
+    
     for num1 in range(len(ship_id_unique)):
         ship_id_temp = interpolated_output[0, num1]
         loc_array = np.argwhere(ship_id == ship_id_temp)
         det_loc_int = int(loc_array[0])
         ship_name_exp.append(ship_name[det_loc_int])
         ship_type_exp.append(ship_type[det_loc_int])
+        ship_destination_exp.append(ship_destination[det_loc_int])
 
     locexp = np.where(interpolated_output[0, :] != 0)
     interpolated_output = np.squeeze(interpolated_output[:, locexp])
@@ -431,13 +444,14 @@ def sar_ais_match_time_interp(input_ais_file: str, input_grd_file: str, input_me
     locexp = locexp[0]
     ship_name_exp = [ship_name_exp[i] for i in locexp]
     ship_type_exp = [ship_type_exp[i] for i in locexp]
+    ship_destination_exp = [ship_destination_exp[i] for i in locexp]
     date_output = [date_output[i] for i in locexp]
     time_output = [time_output[i] for i in locexp]
 
     df = pd.DataFrame(columns=[
         'Date', 'Time', 'MMSI', 'Lon', 'Lat',
         'COG', 'SOG', 'VesselName', 'VesselType',
-        'DimA', 'DimB', 'DimC', 'DimD'
+        'DimA', 'DimB', 'DimC', 'DimD', 'Destination'
     ])
 
     df['Lat'] = interpolated_output[1, :].T
@@ -451,16 +465,17 @@ def sar_ais_match_time_interp(input_ais_file: str, input_grd_file: str, input_me
     df['DimD'] = dim_output[3, :].T
     df['VesselName'] = ship_name_exp
     df['VesselType'] = ship_type_exp
+    df['Destination'] = ship_destination_exp
     df['Date'] = date_output
     df['Time'] = time_output
 
-    df.to_csv('AIStimeInterpolated.csv', index=True)
+    df.to_csv(output_dir + 'AIStimeInterpolated.csv', index=True)
     print('SAR-AIS Time interpolation Finished in: ', time.time() - start_time, ' [s]')
     
     return df
 
 
-def sar_azimuth_offset_corr(df: pd.DataFrame, input_grd_file: str, input_meta_file: str, view_left_right: int = 1) -> pd.DataFrame:
+def sar_azimuth_offset_corr(df: pd.DataFrame, input_grd_file: str, input_meta_file: str, output_dir: str, view_left_right: int = 1) -> pd.DataFrame:
     """
     Correct SAR-AIS azimuth offset based on input parameters.
     """
@@ -490,7 +505,7 @@ def sar_azimuth_offset_corr(df: pd.DataFrame, input_grd_file: str, input_meta_fi
         df.at[index, 'Lon'] += az_off_lon if view_left_right > 0 else -az_off_lon
 
     print('SAR-AIS Azimuth Offset Correction Finished in:', time.time() - start_time, 'seconds')
-    df.to_csv('AISmatchedwithSAR.csv', index=False)
+    df.to_csv(output_dir + 'AISmatchedwithSAR.csv', index=False)
     return df
 
 
@@ -522,7 +537,7 @@ def sar_ais_iden_eval(sar_vessels: str, preproc_ais: pd.DataFrame, output_vessel
 
     iden_vessels = pd.DataFrame(columns=[
         'X', 'Y', 'W', 'H', 'Lon', 'Lat', 'MMSI', 'COG', 'SOG',
-        'VesselName', 'VesselType', 'DimA', 'DimB', 'DimC', 'DimD'
+        'VesselName', 'VesselType', 'DimA', 'DimB', 'DimC', 'DimD', 'Destination', 'DetLon', 'DetLat'
     ])
     uniden_vessels = pd.DataFrame(columns=['X', 'Y', 'W', 'H', 'Lon', 'Lat'])
 
@@ -549,8 +564,8 @@ def sar_ais_iden_eval(sar_vessels: str, preproc_ais: pd.DataFrame, output_vessel
                 'Y': sar_ship_y[num],
                 'W': sar_ship_w[num],
                 'H': sar_ship_h[num],
-                'Lon': sar_ship_lon[num],
-                'Lat': sar_ship_lat[num],
+                'Lon': preproc_ais['Lon'],
+                'Lat': preproc_ais['Lat'],
                 'MMSI': preproc_ais['MMSI'][idx],
                 'COG': preproc_ais['COG'][idx],
                 'SOG': preproc_ais['SOG'][idx],
@@ -559,7 +574,10 @@ def sar_ais_iden_eval(sar_vessels: str, preproc_ais: pd.DataFrame, output_vessel
                 'DimA': preproc_ais['DimA'][idx],
                 'DimB': preproc_ais['DimB'][idx],
                 'DimC': preproc_ais['DimC'][idx],
-                'DimD': preproc_ais['DimD'][idx]
+                'DimD': preproc_ais['DimD'][idx],
+                'Dest': preproc_ais['Destination'][idx],
+                'DetLon': sar_ship_lon[num],
+                'DetLat': sar_ship_lat[num]
             }, index=[0])
             iden_vessels = pd.concat([iden_vessels, new_row], ignore_index=True)
             
@@ -581,6 +599,120 @@ def sar_ais_iden_eval(sar_vessels: str, preproc_ais: pd.DataFrame, output_vessel
 
     return iden_vessels, uniden_vessels
 
+
+def get_ais_query(input_meta_file:str):
+    
+    
+    # get below params from meta file
+    
+    return timestamp_start, timestamp_end, lon_min, lon_max, lat_min, lat_max
+
+
+def get_ais_data(
+    db: Session,
+    timestamp_start: datetime,
+    timestamp_end: datetime,
+    lon_min: float,
+    lon_max: float,
+    lat_min: float,
+    lat_max: float
+) -> pd.DataFrame:
+    query = ais_ship_data_hist_service.get_ship_data_history(
+        db,
+        timestamp_start,
+        timestamp_end,
+        lon_min,
+        lon_max,
+        lat_min,
+        lat_max
+    )
+
+    # 결과를 DataFrame으로 변환
+    df = pd.DataFrame(query, columns=[
+        'MMSI', 'timestamp', 'Lon', 'Lat', 'SOG', 'COG',
+        'VesselName', 'VesselType', 'DimA', 'DimB', 'DimC', 'DimD', 'Status', 'Destination'
+    ])
+
+    # 'timestamp' 컬럼을 'Date'와 'Time'으로 분리
+    df['Date'] = df['timestamp'].dt.date
+    df['Time'] = df['timestamp'].dt.time
+
+    # 원래 'timestamp' 컬럼 삭제
+    df.drop('timestamp', axis=1, inplace=True)
+
+    # 컬럼 순서 재정렬 (선택적)
+    df = df[['MMSI', 'Date', 'Time', 'Lon', 'Lat', 'SOG', 'COG', 
+             'VesselName', 'VesselType', 'DimA', 'DimB', 'DimC', 'DimD', 'Status', 'Destination']]
+
+    return df
+
+
+def save_vessel_data(db:Session, satellite_sar_image_id:str, iden_vessels:pd.DataFrame, uniden_vessels:pd.DataFrame):
+    from app.models.sar_ship_identification import SarShipIdentification
+    from app.models.sar_ship_unidentification import SarShipUnidentification
+    from app.service.sar_ship_identification_service import bulk_upsert_ship_identification
+    from app.service.sar_ship_unidentification_service import bulk_upsert_ship_unidentification
+    import random 
+    
+    iden_df = SarShipIdentification(
+        satellite_sar_image_id=satellite_sar_image_id,
+        identification_ship_id=random.random(), # 어떻게 지정?,
+        longitude=iden_vessels['Lon'],
+        latitude=iden_vessels['Lat'],
+        interpolation_cog=iden_vessels['COG'],
+        interpolation_sog=iden_vessels['SOG'],
+        dima_d=[iden_vessels['DimA'], iden_vessels['DimB'], 
+                iden_vessels['DimC'], iden_vessels['DimD']],
+        type=iden_vessels['VesselType'],
+        end=iden_vessels['Destination'],
+        detection_yn=1,# 탐지 못한 객체에 대해서는 어떻게 지정?  
+        detection_longitude=iden_vessels['DetLon'],
+        detection_latitude=iden_vessels['DetLat']
+        
+    )
+    
+    bulk_upsert_ship_identification(db, iden_df)
+    
+    uniden_df = SarShipUnidentification(
+        satellite_sar_image_id=satellite_sar_image_id,
+        unidentification_ship_id=random.random(), # 어떻게 지정?,
+        longitude=uniden_vessels['Lon'],
+        latitude=uniden_vessels['Lat'],
+        pred_length=0, # calculate with XYWH 
+        pred_width=0 # calculate with XYWH
+    )
+    
+    bulk_upsert_ship_unidentification(db, uniden_df)
+    
+
+def process(db:Session, satellite_sar_image_id: str): 
+    input_grd_file = settings.S03_INPUT_GRD_FILE
+    input_meta_file = settings.S03_INPUT_META_FILE
+    output_dir = settings.S03_OUTPUT_PATH
+    input_vessel_detection_file = settings.S01_OUTPUT_PATH
+    input_vessel_detection_file = os.listdir(input_vessel_detection_file)[0]
+    
+    timestamp_start, timestamp_end, lon_min, lon_max, lat_min, lat_max = get_ais_query(input_meta_file)
+    
+    input_ais_file = get_ais_data( # satellite_image_id로부터 metafile 정보로 확인? 
+        db, 
+        timestamp_start,
+        timestamp_end,
+        lon_min,
+        lon_max,
+        lat_min,
+        lat_max
+    )
+    
+    output_vessel_iden_file = output_dir + input_vessel_detection_file.split('/')[-1][:-4] + '_IdenVessel.csv'
+    output_vessel_uniden_file = output_dir + input_vessel_detection_file.split('/')[-1][:-4] + '_UnIdenVessel.csv'
+    
+    ProcessedDATA1 = sar_ais_match_time_interp(input_ais_file, input_grd_file, input_meta_file, output_dir)
+    ProcessedDATA2 = sar_azimuth_offset_corr(ProcessedDATA1, input_grd_file, input_meta_file, output_dir)
+    ProcessedDATA3, ProcessedDATA4 = sar_ais_iden_eval(input_vessel_detection_file, ProcessedDATA2, output_vessel_iden_file, output_vessel_uniden_file, Cfg.iden_distance)
+
+    save_vessel_data(db, satellite_sar_image_id, ProcessedDATA3, ProcessedDATA4)
+    
 
 def get_args():
     """
@@ -634,8 +766,8 @@ if __name__ == '__main__':
     # input_ais_file = 'TAIS_20240829.csv'
     # input_vessel_detection_file = 'ShipDet_S1A_IW_GRDH_1SDV_20231209T092333_20231209T092402_051576_0639F8_652A.csv'
 
-    ProcessedDATA1 = sar_ais_match_time_interp(args.input_ais_file, args.input_grd_file, args.input_meta_file)
-    ProcessedDATA2 = sar_azimuth_offset_corr(ProcessedDATA1, args.input_grd_file, args.input_meta_file)
+    ProcessedDATA1 = sar_ais_match_time_interp(args.input_ais_file, args.input_grd_file, args.input_meta_file, args.output_dir)
+    ProcessedDATA2 = sar_azimuth_offset_corr(ProcessedDATA1, args.input_grd_file, args.input_meta_file, args.output_dir)
     ProcessedDATA3, ProcessedDATA4 = sar_ais_iden_eval(args.input_vessel_detection_file, ProcessedDATA2, output_vessel_iden_file, output_vessel_uniden_file, Cfg.iden_distance)
 
     # Calculate and log the processing time

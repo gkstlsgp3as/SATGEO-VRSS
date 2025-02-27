@@ -320,4 +320,4 @@ class Velocticy_est_UMBRA():
         targetBBoxExp[:,4]=SOGEstim.ravel() 
         targetBBoxExp[:,5]=COGEstim.ravel()         
 
-        return COG
+        return targetBBoxExp

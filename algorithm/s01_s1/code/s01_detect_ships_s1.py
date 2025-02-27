@@ -19,6 +19,8 @@ import cv2
 from utils.cfg import Cfg
 from models.models import Yolov4
 import logging
+from sqlalchemy.orm import Session
+from app.config.settings import settings
 
 """hyper parameters"""
 use_cuda = True
@@ -65,11 +67,8 @@ def detect(model, imglist, div, input_size, score_thresh):
             # Gaussian Blur
             kernel = 3
             sized = cv2.GaussianBlur(sized, (kernel,kernel), 0)
-            # sized = cv2.medianBlur(sized,kernel)
-            # sized = cv2.morphologyEx(sized, cv2.MORPH_OPEN, np.ones((3,3), np.uint8))
-
+            
             start = time.time()
-            # model, img, conf_thresh, nms_thresh, use_cuda=1
             boxes = do_detect(model=model, img=sized, conf_thresh=score_thresh, nms_thresh=0.4, use_cuda=1)
             detect_time = time.time() - start
             detect_times.append(detect_time)
@@ -95,8 +94,7 @@ def detect(model, imglist, div, input_size, score_thresh):
                 else:
                     shore_bboxes.append([x1,y1,x2,y2])
         total_preds.append(len(final_bboxes))
-    #print('Prediction: {}\tShore: {}\tTime: {:.4f}sec'.format(sum(total_preds), len(shore_bboxes), sum(detect_times)))
-    #return sum(total_preds)
+    
     return final_bboxes
 
 
@@ -214,6 +212,8 @@ def detect_listInference(model, input_dir, output_dir, div, input_size, score_th
             image_df = pd.DataFrame(columns=['image', 'X', 'Y', 'W', 'H', 'Lon', 'Lat'])
             image_df.to_csv(output_dir+i, index=False, encoding='utf-8')
             
+        return image_df
+            
             
 # IoU calculation between 2 boxes
 def getIoU(bb1, bb2):
@@ -313,8 +313,31 @@ def geographicToIntrinsic(tif_ref, lat, lon):
     return y, x
 
 
-def process():
-    pass
+def process(db: Session, satellite_sar_image_id: str):
+    input_dir = settings.S01_S1_INPUT_PATH
+    output_dir = settings.S01_S1_OUTPUT_PATH
+    model_weight_file = settings.S01_S1_MODEL_PATH
+    
+    weight_path = model_weight_file
+    weight_name = weight_path.split('/')[-1]
+    
+    model = Yolov4(yolov4conv137weight=None, n_classes=1, inference=True)
+    pretrained_dict = torch.load(weight_path, map_location=torch.device('cuda'))
+    model.load_state_dict(pretrained_dict)
+
+    if use_cuda:
+        model.cuda()
+
+    detect_results = detect_listInference(model, input_dir,
+                output_dir,
+                div=Cfg.division,
+                input_size=Cfg.inputsize,
+                score_thresh=Cfg.scorethresh,
+                model_name=weight_name,
+                line_det=False,
+                kernel=3,
+                bandnumber=Cfg.Satelliteband)
+    
 
 def get_args():
     parser = argparse.ArgumentParser()

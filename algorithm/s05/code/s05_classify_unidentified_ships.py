@@ -97,8 +97,7 @@ def process(db: Session, satellite_sar_image_id: str):
     4. Updates the classification results back into the database.
     """
     # Define directories and file paths based on settings
-    chip_dir = settings.S05_INPUT_PATH
-    output_dir = settings.S05_OUTPUT_PATH
+    chip_dir = settings.S02_CHIP_PATH
     meta_file = settings.S05_META_FILE
     
     # Record start time for processing
@@ -113,14 +112,15 @@ def process(db: Session, satellite_sar_image_id: str):
     ship_class_predictions = classify_unidentified_ships(chip_dir, meta_file)
     
     # Update the prediction results in the dictionary for each record
-    for record in data_dict:
-        record['prediction_ship_type'] = [Cfg.classes[pred] for pred in ship_class_predictions]
+    #for record in data_dict:
+    #    record['prediction_ship_type'] = [Cfg.classes[pred] for pred in ship_class_predictions]
+    data_dict['prediction_ship_type'] = [Cfg.classes[pred] for pred in ship_class_predictions]
 
     # Convert the list of dictionaries to a DataFrame for bulk database update
     df = pd.DataFrame(data_dict)
 
     # Update the database with the new ship classification predictions
-    sar_ship_unidentification_service.bulk_upsert_sar_ship_unidentification(db, df)
+    sar_ship_unidentification_service.bulk_upsert_sar_ship_unidentification_type(db, df)
 
     # Calculate and log the processing time
     processed_time = time.time() - start_time
